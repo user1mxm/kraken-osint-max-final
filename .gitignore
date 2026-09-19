@@ -1,0 +1,25 @@
+# Credentials / sessions
+.env
+.env.*
+*.session
+*.session-journal
+cookies.txt
+*cookie*.json
+*token*.json
+*credentials*.json
+
+# Acquired evidence/media: keep outside source control
+public/media/vault/
+media/vault/
+downloads/
+evidence/
+artifacts/
+
+# Runtime
+__pycache__/
+*.pyc
+*.log
+*.part
+*.tmp
+node_modules/
+dist/
