@@ -176,7 +176,9 @@ def sentiment_for(text: str) -> dict[str, Any]:
 def parse_timestamp(raw_value: str | None) -> datetime | None:
     if not raw_value:
         return None
-    value = raw_value.strip().replace("Z", "+00:00")
+    value = raw_value.strip()
+    if value.endswith("Z"):
+        value = f"{value[:-1]}+00:00"
     try:
         parsed = datetime.fromisoformat(value)
     except ValueError:
@@ -198,7 +200,8 @@ def build_graph(records: list[dict[str, Any]]) -> dict[str, Any]:
 
     for record in records:
         author = record["author"]
-        register_node(author, "account") if author else None
+        if author:
+            register_node(author, "account")
         for mention in record["mentions"]:
             target = f"@{mention}" if not mention.startswith("@") else mention
             register_node(target, "account")
@@ -233,11 +236,19 @@ def build_graph(records: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def render_mermaid(edges: list[dict[str, Any]]) -> str:
+    def safe_label(value: str) -> str:
+        return (
+            value.replace("\\", "\\\\")
+            .replace("\n", " ")
+            .replace("\r", " ")
+            .replace('"', "'")
+        )
+
     lines = ["graph TD"]
     for edge in edges[:40]:
-        source = edge["source"].replace('"', "'")
-        target = edge["target"].replace('"', "'")
-        relation = edge["relation"]
+        source = safe_label(edge["source"])
+        target = safe_label(edge["target"])
+        relation = safe_label(edge["relation"])
         weight = edge["weight"]
         lines.append(f'    "{source}" -- "{relation} ({weight})" --> "{target}"')
     return "\n".join(lines)
@@ -467,14 +478,14 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    result = analyze(args.input.expanduser().resolve())
+    result = analyze(args.input.expanduser())
     if args.graph_format == "json":
         result["graphs"].pop("mermaid", None)
     elif args.graph_format == "mermaid":
         result["graphs"] = {"mermaid": result["graphs"]["mermaid"]}
 
     if args.output:
-        output_path = args.output.expanduser().resolve()
+        output_path = args.output.expanduser()
         output_path.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         print(f"Analyzed {result['summary']['records']} records and wrote {output_path}")
     else:
