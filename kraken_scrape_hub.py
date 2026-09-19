@@ -180,10 +180,11 @@ def parse_timestamp(raw_value: str | None) -> datetime | None:
     if not raw_value:
         return None
     value = raw_value.strip()
-    if re.fullmatch(r"\d{13}", value):
-        return datetime.fromtimestamp(int(value) / 1000, tz=timezone.utc)
-    if re.fullmatch(r"\d{10}(?:\.\d+)?", value):
-        return datetime.fromtimestamp(float(value), tz=timezone.utc)
+    if re.fullmatch(r"-?\d+(?:\.\d+)?", value):
+        epoch_value = float(value)
+        if abs(epoch_value) >= 1_000_000_000_000:
+            epoch_value /= 1000
+        return datetime.fromtimestamp(epoch_value, tz=timezone.utc)
     if value.endswith("Z"):
         value = f"{value[:-1]}+00:00"
     try:
@@ -279,12 +280,13 @@ def build_graph(records: list[dict[str, Any]]) -> dict[str, Any]:
 
 def render_mermaid(edges: list[dict[str, Any]]) -> str:
     def safe_label(value: str) -> str:
-        return (
+        normalized = (
             value.replace("\\", "\\\\")
             .replace("\n", " ")
             .replace("\r", " ")
             .replace('"', "'")
         )
+        return re.sub(r"[\[\]\(\)\|{}<>`]", "_", normalized)
 
     lines = ["graph TD"]
     for edge in edges[:40]:
@@ -303,7 +305,7 @@ def summarize_scraped(records: list[dict[str, Any]]) -> dict[str, Any]:
     for record in records:
         domain_counts.update(record["domains"])
         if record["platform"]:
-            platform_counts.update([record["platform"]])
+            platform_counts.update([record["platform"].lower()])
         urls += len(record["urls"])
     return {
         "records": len(records),
@@ -370,7 +372,7 @@ def summarize_socmint(records: list[dict[str, Any]]) -> dict[str, Any]:
         stats = account_stats[author]
         stats["posts"] += 1
         if record["platform"]:
-            stats["platforms"].update([record["platform"]])
+            stats["platforms"].update([record["platform"].lower()])
         stats["hashtags"].update(tag.lower() for tag in record["hashtags"])
         stats["mentions"].update(mention.lower() for mention in record["mentions"])
         stats["domains"].update(record["domains"])
