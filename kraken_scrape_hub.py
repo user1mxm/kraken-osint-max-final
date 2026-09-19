@@ -152,8 +152,8 @@ def domain_for(value: str) -> str | None:
     if "@" in value and not value.startswith("http"):
         return value.rsplit("@", 1)[-1].lower()
     parsed = urlparse(value)
-    if parsed.netloc:
-        return parsed.netloc.lower()
+    if parsed.hostname:
+        return parsed.hostname.lower()
     return None
 
 
@@ -183,7 +183,9 @@ def parse_timestamp(raw_value: str | None) -> datetime | None:
         parsed = datetime.fromisoformat(value)
     except ValueError:
         return None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    if not parsed.tzinfo:
+        return None
+    return parsed.astimezone(timezone.utc)
 
 
 def top_counter(counter: Counter[str], limit: int = 10) -> list[dict[str, Any]]:

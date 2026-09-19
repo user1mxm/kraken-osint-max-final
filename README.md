@@ -19,6 +19,10 @@ Analizar un archivo JSON o texto plano:
 python kraken_scrape_hub.py INPUT.json -o analysis.json
 ```
 
+```bash
+python kraken_scrape_hub.py INPUT.txt -o analysis.json
+```
+
 Mostrar solo el grafo Mermaid:
 
 ```bash
