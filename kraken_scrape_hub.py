@@ -103,7 +103,7 @@ def iter_candidate_records(
     if isinstance(value, dict):
         next_context = inherit_context(context, value)
         if is_candidate_record(value):
-            matches.append((path, {**context, **value}))
+            matches.append((path, {**next_context, **value}))
         for key, item in value.items():
             if isinstance(item, (dict, list)):
                 matches.extend(iter_candidate_records(item, f"{path}.{key}", next_context))
@@ -180,10 +180,10 @@ def parse_timestamp(raw_value: str | None) -> datetime | None:
     if not raw_value:
         return None
     value = raw_value.strip()
-    if re.fullmatch(r"\d{10}(?:\.\d+)?", value):
-        return datetime.fromtimestamp(float(value), tz=timezone.utc)
     if re.fullmatch(r"\d{13}", value):
         return datetime.fromtimestamp(int(value) / 1000, tz=timezone.utc)
+    if re.fullmatch(r"\d{10}(?:\.\d+)?", value):
+        return datetime.fromtimestamp(float(value), tz=timezone.utc)
     if value.endswith("Z"):
         value = f"{value[:-1]}+00:00"
     try:
