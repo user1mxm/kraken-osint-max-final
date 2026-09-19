@@ -42,6 +42,8 @@ BREACH_PATTERNS = {
     "credential_dump": re.compile(r"(?i)\bcombo\b|\bdump\b|\bcredential(?:s)?\b|\bbreach(?:ed)?\b|\bleak(?:ed|s)?\b"),
 }
 
+SENSITIVE_BREACH_TYPES = {"email", "phone", "password", "token", "card", "ssn_like"}
+
 
 def normalize_key(key: str) -> str:
     return key.strip().lower().replace("-", "_")
@@ -108,7 +110,7 @@ def iter_candidate_records(
         for index, item in enumerate(value):
             matches.extend(iter_candidate_records(item, f"{path}[{index}]", context))
     elif value not in (None, ""):
-        matches.append((path, {"text": str(value)}))
+        matches.append((path, {**context, "text": str(value)}))
     return matches
 
 
@@ -183,13 +185,31 @@ def parse_timestamp(raw_value: str | None) -> datetime | None:
         parsed = datetime.fromisoformat(value)
     except ValueError:
         return None
-    if not parsed.tzinfo:
-        return None
-    return parsed.astimezone(timezone.utc)
+    return parsed
 
 
 def top_counter(counter: Counter[str], limit: int = 10) -> list[dict[str, Any]]:
     return [{"value": value, "count": count} for value, count in counter.most_common(limit)]
+
+
+def mask_indicator(kind: str, value: str) -> str:
+    stripped = value.strip()
+    if kind not in SENSITIVE_BREACH_TYPES:
+        return stripped
+    if kind == "email" and "@" in stripped:
+        local, domain = stripped.split("@", 1)
+        return f"{local[:1]}***@{domain}"
+    if kind in {"card", "phone", "ssn_like"}:
+        digits = re.sub(r"\D", "", stripped)
+        tail = digits[-4:] if len(digits) >= 4 else digits
+        return f"***{tail}" if tail else "***"
+    if "=" in stripped:
+        key, _, _ = stripped.partition("=")
+        return f"{key}=***"
+    if ":" in stripped:
+        key, _, _ = stripped.partition(":")
+        return f"{key}:***"
+    return "***"
 
 
 def build_graph(records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -315,12 +335,16 @@ def summarize_socmint(records: list[dict[str, Any]]) -> dict[str, Any]:
             "sentiment_total": 0.0,
         }
     )
-    hourly_activity: Counter[str] = Counter()
+    hourly_activity_utc: Counter[str] = Counter()
+    hourly_activity_naive: Counter[str] = Counter()
     for record in records:
         author = record["author"]
         parsed_timestamp = parse_timestamp(record["timestamp"])
         if parsed_timestamp:
-            hourly_activity.update([f"{parsed_timestamp.hour:02d}:00"])
+            if parsed_timestamp.tzinfo:
+                hourly_activity_utc.update([f"{parsed_timestamp.astimezone(timezone.utc).hour:02d}:00"])
+            else:
+                hourly_activity_naive.update([f"{parsed_timestamp.hour:02d}:00"])
         if not author:
             continue
         stats = account_stats[author]
@@ -349,7 +373,8 @@ def summarize_socmint(records: list[dict[str, Any]]) -> dict[str, Any]:
 
     return {
         "accounts": accounts,
-        "activity_by_hour_utc": top_counter(hourly_activity, limit=24),
+        "activity_by_hour_utc": top_counter(hourly_activity_utc, limit=24),
+        "activity_by_hour_naive": top_counter(hourly_activity_naive, limit=24),
         "tracked_accounts": len(account_stats),
     }
 
@@ -365,7 +390,7 @@ def summarize_breaches(records: list[dict[str, Any]]) -> dict[str, Any]:
             matches = [match.group(0) for match in pattern.finditer(text)]
             if not matches:
                 continue
-            exposures[name].update(matches)
+            exposures[name].update(mask_indicator(name, value) for value in matches)
             record_hits[name] = len(matches)
         if record_hits:
             risk_score += sum(record_hits.values())
