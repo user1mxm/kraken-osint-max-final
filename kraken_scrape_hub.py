@@ -81,17 +81,32 @@ def is_candidate_record(value: dict[str, Any]) -> bool:
     return bool(lowered_keys & INTERESTING_KEYS)
 
 
-def iter_candidate_records(value: Any, path: str = "root") -> list[tuple[str, dict[str, Any]]]:
+def inherit_context(context: dict[str, Any], value: dict[str, Any]) -> dict[str, Any]:
+    inherited = dict(context)
+    for key, item in value.items():
+        normalized = normalize_key(key)
+        if normalized in INTERESTING_KEYS and not isinstance(item, (dict, list)):
+            inherited[key] = item
+    return inherited
+
+
+def iter_candidate_records(
+    value: Any,
+    path: str = "root",
+    context: dict[str, Any] | None = None,
+) -> list[tuple[str, dict[str, Any]]]:
     matches: list[tuple[str, dict[str, Any]]] = []
+    context = context or {}
     if isinstance(value, dict):
+        next_context = inherit_context(context, value)
         if is_candidate_record(value):
-            matches.append((path, value))
-        else:
-            for key, item in value.items():
-                matches.extend(iter_candidate_records(item, f"{path}.{key}"))
+            matches.append((path, {**context, **value}))
+        for key, item in value.items():
+            if isinstance(item, (dict, list)):
+                matches.extend(iter_candidate_records(item, f"{path}.{key}", next_context))
     elif isinstance(value, list):
         for index, item in enumerate(value):
-            matches.extend(iter_candidate_records(item, f"{path}[{index}]"))
+            matches.extend(iter_candidate_records(item, f"{path}[{index}]", context))
     elif value not in (None, ""):
         matches.append((path, {"text": str(value)}))
     return matches
@@ -120,8 +135,6 @@ def extract_text(record: dict[str, Any]) -> str:
     lowered = {normalize_key(key): value for key, value in record.items()}
     for key in TEXT_KEYS:
         parts.extend(nested_strings(lowered.get(key)))
-    if not parts:
-        parts.extend(nested_strings(record))
     return " ".join(part for part in parts if part).strip()
 
 
@@ -336,13 +349,11 @@ def summarize_breaches(records: list[dict[str, Any]]) -> dict[str, Any]:
         text = record["text"]
         record_hits: dict[str, int] = {}
         for name, pattern in BREACH_PATTERNS.items():
-            matches = pattern.findall(text)
+            matches = [match.group(0) for match in pattern.finditer(text)]
             if not matches:
                 continue
-            values = matches if isinstance(matches[0], str) else [" ".join(match).strip() for match in matches]
-            cleaned = [value if isinstance(value, str) else str(value) for value in values]
-            exposures[name].update(cleaned)
-            record_hits[name] = len(cleaned)
+            exposures[name].update(matches)
+            record_hits[name] = len(matches)
         if record_hits:
             risk_score += sum(record_hits.values())
             flagged_records.append(

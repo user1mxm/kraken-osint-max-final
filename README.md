@@ -16,13 +16,13 @@ Plataforma OSINT/SOCINT con utilidades locales para analizar datasets ya obtenid
 Analizar un archivo JSON o texto plano:
 
 ```bash
-python /home/runner/work/kraken-osint-max-final/kraken-osint-max-final/kraken_scrape_hub.py INPUT.json -o analysis.json
+python kraken_scrape_hub.py INPUT.json -o analysis.json
 ```
 
 Mostrar solo el grafo Mermaid:
 
 ```bash
-python /home/runner/work/kraken-osint-max-final/kraken-osint-max-final/kraken_scrape_hub.py INPUT.json --graph-format mermaid
+python kraken_scrape_hub.py INPUT.json --graph-format mermaid
 ```
 
 ## Formatos de entrada soportados
