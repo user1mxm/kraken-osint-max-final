@@ -16,6 +16,7 @@ PLATFORM_KEYS = ("platform", "network", "source", "site", "provider", "origin")
 URL_KEYS = ("url", "link", "href", "source_url", "profile_url", "permalink")
 TIMESTAMP_KEYS = ("timestamp", "created_at", "published_at", "date", "time")
 INTERESTING_KEYS = set(TEXT_KEYS + AUTHOR_KEYS + PLATFORM_KEYS + URL_KEYS + TIMESTAMP_KEYS)
+RECORD_PATH_FIELD = "__kraken_record_path__"
 
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b", re.I)
 PHONE_RE = re.compile(r"(?<!\w)(?:\+?\d[\d(). -]{7,}\d)")
@@ -118,9 +119,9 @@ def load_records(path: Path) -> list[dict[str, Any]]:
     if path.suffix.lower() == ".json":
         payload = json.loads(path.read_text(encoding="utf-8"))
         matches = iter_candidate_records(payload)
-        return [{**record, "_record_path": record_path} for record_path, record in matches]
+        return [{**record, RECORD_PATH_FIELD: record_path} for record_path, record in matches]
     lines = [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    return [{"text": line, "_record_path": f"line:{index + 1}"} for index, line in enumerate(lines)]
+    return [{"text": line, RECORD_PATH_FIELD: f"line:{index + 1}"} for index, line in enumerate(lines)]
 
 
 def canonical_author(raw_author: str | None) -> str | None:
@@ -179,6 +180,10 @@ def parse_timestamp(raw_value: str | None) -> datetime | None:
     if not raw_value:
         return None
     value = raw_value.strip()
+    if re.fullmatch(r"\d{10}(?:\.\d+)?", value):
+        return datetime.fromtimestamp(float(value), tz=timezone.utc)
+    if re.fullmatch(r"\d{13}", value):
+        return datetime.fromtimestamp(int(value) / 1000, tz=timezone.utc)
     if value.endswith("Z"):
         value = f"{value[:-1]}+00:00"
     try:
@@ -210,6 +215,21 @@ def mask_indicator(kind: str, value: str) -> str:
         key, _, _ = stripped.partition(":")
         return f"{key}:***"
     return "***"
+
+
+def is_valid_card_number(value: str) -> bool:
+    digits = [int(char) for char in re.sub(r"\D", "", value)]
+    if len(digits) < 13 or len(digits) > 19:
+        return False
+    checksum = 0
+    parity = len(digits) % 2
+    for index, digit in enumerate(digits):
+        if index % 2 == parity:
+            digit *= 2
+            if digit > 9:
+                digit -= 9
+        checksum += digit
+    return checksum % 10 == 0
 
 
 def build_graph(records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -388,6 +408,8 @@ def summarize_breaches(records: list[dict[str, Any]]) -> dict[str, Any]:
         record_hits: dict[str, int] = {}
         for name, pattern in BREACH_PATTERNS.items():
             matches = [match.group(0) for match in pattern.finditer(text)]
+            if name == "card":
+                matches = [match for match in matches if is_valid_card_number(match)]
             if not matches:
                 continue
             exposures[name].update(mask_indicator(name, value) for value in matches)
@@ -455,7 +477,7 @@ def normalize_record(record: dict[str, Any]) -> dict[str, Any]:
     domains = sorted({domain for domain in (domain_for(value) for value in urls + emails) if domain})
     sentiment = sentiment_for(text)
     return {
-        "record_path": str(record.get("_record_path", "root")),
+        "record_path": str(record.get(RECORD_PATH_FIELD, "root")),
         "text": text,
         "author": author,
         "platform": platform,

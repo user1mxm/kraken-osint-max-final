@@ -31,7 +31,7 @@ python kraken_scrape_hub.py INPUT.json --graph-format mermaid
 
 ## Formatos de entrada soportados
 
-- JSON con listas o diccionarios que incluyan campos como `text`, `content`, `body`, `author`, `username`, `platform`, `url` o `timestamp`.
+- JSON con listas o diccionarios que incluyan campos como `text`, `content`, `body`, `message`, `description`, `bio`, `title`, `caption`, `author`, `username`, `handle`, `screen_name`, `account`, `platform`, `source`, `url`, `source_url`, `profile_url`, `permalink`, `timestamp`, `created_at`, `published_at`, `date` o `time`.
 - Texto plano con una observación por línea.
 
 ## Despliegue rápido
